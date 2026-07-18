@@ -6,7 +6,133 @@ import threading
 from datetime import date
 import streamlit as st
 
-st.set_page_config(page_title="Multilingual Summarizer", layout="centered")
+st.set_page_config(page_title="Bhasha Setu", page_icon="🌉", layout="centered")
+
+LOGO_SVG = """
+<svg width="44" height="44" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bsGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B6CFF"/>
+      <stop offset="100%" stop-color="#E8B84B"/>
+    </linearGradient>
+  </defs>
+  <circle cx="9" cy="30" r="5" fill="url(#bsGrad)"/>
+  <circle cx="35" cy="30" r="5" fill="url(#bsGrad)"/>
+  <path d="M9 30 C 9 12, 35 12, 35 30" stroke="url(#bsGrad)" stroke-width="3" fill="none" stroke-linecap="round"/>
+</svg>
+"""
+
+
+def apply_custom_theme():
+    st.markdown(f"""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    :root {{
+        --bs-bg: #0B0D14;
+        --bs-panel: #12141E;
+        --bs-border: #232739;
+        --bs-text: #ECEEF5;
+        --bs-muted: #8B90A6;
+        --bs-accent: #8B6CFF;
+        --bs-accent-2: #E8B84B;
+    }}
+
+    .stApp {{
+        background: radial-gradient(ellipse 1200px 600px at 50% -10%, rgba(139,108,255,0.14), transparent),
+                    var(--bs-bg);
+        color: var(--bs-text);
+        font-family: 'Inter', sans-serif;
+    }}
+
+    h1, h2, h3, .stMarkdown h1, .stMarkdown h2 {{
+        font-family: 'Space Grotesk', sans-serif !important;
+        letter-spacing: -0.01em;
+    }}
+
+    /* Buttons */
+    .stButton > button {{
+        background: linear-gradient(135deg, var(--bs-accent), #6A4FE0);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        transition: filter 0.15s ease, transform 0.1s ease;
+    }}
+    .stButton > button:hover {{
+        filter: brightness(1.12);
+        transform: translateY(-1px);
+    }}
+
+    /* Inputs, textareas, selects */
+    .stTextInput input, .stTextArea textarea, .stSelectbox div[data-baseweb="select"] > div {{
+        background-color: var(--bs-panel) !important;
+        border: 1px solid var(--bs-border) !important;
+        color: var(--bs-text) !important;
+        border-radius: 8px !important;
+    }}
+
+    /* Sidebar */
+    section[data-testid="stSidebar"] {{
+        background-color: var(--bs-panel);
+        border-right: 1px solid var(--bs-border);
+    }}
+
+    /* Metric (used in admin panel) */
+    div[data-testid="stMetricValue"] {{
+        font-family: 'JetBrains Mono', monospace;
+        color: var(--bs-accent-2);
+    }}
+
+    /* Captions / timer text */
+    .stCaption, [data-testid="stCaptionContainer"] {{
+        font-family: 'JetBrains Mono', monospace !important;
+        color: var(--bs-muted) !important;
+    }}
+
+    /* Hide default Streamlit chrome for a cleaner branded look */
+    #MainMenu {{visibility: hidden;}}
+    footer {{visibility: hidden;}}
+
+    .bs-header {{
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 4px;
+    }}
+    .bs-header .bs-title {{
+        font-family: 'Space Grotesk', sans-serif;
+        font-size: 30px;
+        font-weight: 700;
+        background: linear-gradient(135deg, var(--bs-text), var(--bs-accent-2));
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }}
+    .bs-tagline {{
+        color: var(--bs-muted);
+        font-size: 14px;
+        margin-bottom: 20px;
+    }}
+    .bs-divider {{
+        height: 2px;
+        background: linear-gradient(90deg, var(--bs-accent), var(--bs-accent-2), transparent);
+        border-radius: 2px;
+        margin: 8px 0 24px 0;
+    }}
+    </style>
+    """, unsafe_allow_html=True)
+
+
+def render_brand_header(tagline: str):
+    st.markdown(f"""
+    <div class="bs-header">{LOGO_SVG}<span class="bs-title">Bhasha Setu</span></div>
+    <div class="bs-tagline">{tagline}</div>
+    <div class="bs-divider"></div>
+    """, unsafe_allow_html=True)
+
+
+apply_custom_theme()
 
 LANGUAGES = ["English", "Telugu", "Hindi", "Tamil", "Kannada", "French", "Spanish", "German"]
 
@@ -194,7 +320,7 @@ if "username" not in st.session_state:
     st.session_state.pending_admin_check = False
 
 if st.session_state.username is None:
-    st.title("Multilingual summarizer")
+    render_brand_header("Bridging your text across languages and AI models.")
     st.caption("Enter your name to continue.")
     name_input = st.text_input("Your name")
     if st.button("Continue", type="primary"):
@@ -208,7 +334,7 @@ if st.session_state.username is None:
     st.stop()
 
 if st.session_state.pending_admin_check:
-    st.title(f"Welcome, {st.session_state.username}")
+    render_brand_header(f"Welcome, {st.session_state.username}")
     st.caption("This name matches an admin account. Enter the admin password to unlock admin access, or continue as a regular user.")
     pw = st.text_input("Admin password", type="password")
     col1, col2 = st.columns(2)
@@ -233,9 +359,7 @@ if st.session_state.pending_admin_check:
 # MAIN APP
 # ======================================================================
 
-st.title("Multilingual summarizer")
-st.header(f"Welcome, {st.session_state.username}")
-st.caption("Paste text, or upload an image, PDF, or Word document. Pick a provider and a language.")
+render_brand_header(f"Welcome, {st.session_state.username} — paste text, or upload an image, PDF, or Word document.")
 
 with st.sidebar:
     role_label = " (admin)" if st.session_state.is_admin else ""
