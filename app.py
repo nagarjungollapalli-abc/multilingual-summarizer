@@ -7,35 +7,56 @@ import streamlit as st
 
 st.set_page_config(page_title="Multilingual Summarizer", layout="centered")
 
-LANGUAGES = ["English", "Telugu", "Hindi", "Tamil", "Kannada", "Sanskrit", "French", "Spanish", "German"]
+LANGUAGES = ["English", "Telugu", "Hindi", "Tamil", "Kannada", "French", "Spanish", "German"]
 
-# ---------- Usage limits (protects your API budget once this is public) ----------
-# Tune these to whatever you're comfortable with. They only matter when you're
-# supplying your own key via Secrets on a public deployment. When each visitor
-# pastes their own key, these limits still apply but only cost them, not you.
-MAX_CHARS_PER_REQUEST = 6000        # trims very long pasted/extracted text
-MAX_REQUESTS_PER_SESSION = 5        # per browser tab/session
-MAX_REQUESTS_PER_DAY_GLOBAL = 100   # across every visitor combined, resets at midnight UTC
+PROVIDERS = {
+    "Claude (Anthropic)": {
+        "env_var": "ANTHROPIC_API_KEY",
+        "default_model": "claude-sonnet-4-6",
+        "supports_image": True,
+        "get_key_url": "https://console.anthropic.com",
+    },
+    "ChatGPT (OpenAI)": {
+        "env_var": "OPENAI_API_KEY",
+        "default_model": "gpt-5.6",
+        "supports_image": True,
+        "get_key_url": "https://platform.openai.com/api-keys",
+    },
+    "Gemini (Google)": {
+        "env_var": "GOOGLE_API_KEY",
+        "default_model": "gemini-flash-latest",
+        "supports_image": True,
+        "get_key_url": "https://aistudio.google.com/apikey",
+    },
+    "Sarvam AI": {
+        "env_var": "SARVAM_API_KEY",
+        "default_model": "sarvam-105b",
+        "supports_image": False,  # text-only as of writing
+        "get_key_url": "https://dashboard.sarvam.ai",
+    },
+}
+
+# ---------- Usage limits (protects the admin's API budget once this is public) ----------
+MAX_CHARS_PER_REQUEST = 6000
+MAX_REQUESTS_PER_SESSION = 5
+MAX_REQUESTS_PER_DAY_GLOBAL = 100
 
 
 @st.cache_resource
 def _usage_counter():
-    # st.cache_resource makes this ONE shared object for the whole running app
-    # (all visitors), not per-session — that's what makes a global daily cap work.
     return {"date": date.today(), "count": 0, "lock": threading.Lock()}
 
 
-def check_and_record_usage() -> str | None:
-    """Returns an error message if this request should be blocked; otherwise
-    records the usage and returns None."""
+def record_usage(is_admin: bool) -> str | None:
+    """Returns a blocking error message for non-admins over their limit;
+    always records the request (for stats) and returns None otherwise."""
     if "session_request_count" not in st.session_state:
         st.session_state.session_request_count = 0
 
-    if st.session_state.session_request_count >= MAX_REQUESTS_PER_SESSION:
+    if not is_admin and st.session_state.session_request_count >= MAX_REQUESTS_PER_SESSION:
         return (
             f"You've reached the limit of {MAX_REQUESTS_PER_SESSION} requests "
-            f"for this session. Refresh the page to reset, or run this app "
-            f"with your own key locally for unlimited use."
+            f"for this session. Refresh the page to reset."
         )
 
     counter = _usage_counter()
@@ -43,35 +64,19 @@ def check_and_record_usage() -> str | None:
         if counter["date"] != date.today():
             counter["date"] = date.today()
             counter["count"] = 0
-        if counter["count"] >= MAX_REQUESTS_PER_DAY_GLOBAL:
+        if not is_admin and counter["count"] >= MAX_REQUESTS_PER_DAY_GLOBAL:
             return "This app has reached its shared daily usage limit. Please try again tomorrow."
         counter["count"] += 1
 
     st.session_state.session_request_count += 1
     return None
 
-PROVIDERS = {
-    "Claude (Anthropic)": {
-        "env_var": "ANTHROPIC_API_KEY",
-        "default_model": "claude-sonnet-4-6",
-        "supports_image": True,
-    },
-    "ChatGPT (OpenAI)": {
-        "env_var": "OPENAI_API_KEY",
-        "default_model": "gpt-5.6",
-        "supports_image": True,
-    },
-    "Gemini (Google)": {
-        "env_var": "GOOGLE_API_KEY",
-        "default_model": "gemini-flash-latest",
-        "supports_image": True,
-    },
-    "Sarvam AI": {
-        "env_var": "SARVAM_API_KEY",
-        "default_model": "sarvam-105b",
-        "supports_image": False,  # text-only as of writing
-    },
-}
+
+def get_secret(name: str) -> str:
+    try:
+        return st.secrets.get(name, "") or os.environ.get(name, "")
+    except Exception:
+        return os.environ.get(name, "")
 
 
 # ---------- File extraction helpers ----------
@@ -150,7 +155,6 @@ def call_gemini(api_key, model, prompt, image_bytes=None, image_mime=None):
 
 
 def call_sarvam(api_key, model, prompt):
-    # Sarvam exposes an OpenAI-compatible /v1/chat/completions endpoint
     from openai import OpenAI
     client = OpenAI(api_key=api_key, base_url="https://api.sarvam.ai/v1")
     response = client.chat.completions.create(
@@ -160,77 +164,134 @@ def call_sarvam(api_key, model, prompt):
     return response.choices[0].message.content
 
 
-# ---------- UI ----------
+# ======================================================================
+# HOME / LOGIN SCREEN
+# ======================================================================
+
+if "username" not in st.session_state:
+    st.session_state.username = None
+    st.session_state.is_admin = False
+    st.session_state.pending_admin_check = False
+
+if st.session_state.username is None:
+    st.title("Multilingual summarizer")
+    st.caption("Enter your name to continue.")
+    name_input = st.text_input("Your name")
+    if st.button("Continue", type="primary"):
+        if not name_input.strip():
+            st.warning("Please enter a name.")
+        else:
+            st.session_state.username = name_input.strip()
+            admin_names = [a.strip().lower() for a in get_secret("ADMIN_USERNAMES").split(",") if a.strip()]
+            st.session_state.pending_admin_check = st.session_state.username.lower() in admin_names
+            st.rerun()
+    st.stop()
+
+if st.session_state.pending_admin_check:
+    st.title(f"Welcome, {st.session_state.username}")
+    st.caption("This name matches an admin account. Enter the admin password to unlock admin access, or continue as a regular user.")
+    pw = st.text_input("Admin password", type="password")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Unlock admin access", type="primary"):
+            real_pw = get_secret("ADMIN_PASSWORD")
+            if real_pw and pw == real_pw:
+                st.session_state.is_admin = True
+                st.session_state.pending_admin_check = False
+                st.rerun()
+            else:
+                st.error("Incorrect password.")
+    with col2:
+        if st.button("Continue as regular user"):
+            st.session_state.is_admin = False
+            st.session_state.pending_admin_check = False
+            st.rerun()
+    st.stop()
+
+
+# ======================================================================
+# MAIN APP
+# ======================================================================
 
 st.title("Multilingual summarizer")
 st.caption("Paste text, or upload an image, PDF, or Word document. Pick a provider and a language.")
 
 with st.sidebar:
+    role_label = " (admin)" if st.session_state.is_admin else ""
+    st.write(f"Signed in as **{st.session_state.username}**{role_label}")
+    if st.button("Switch user"):
+        for key in ["username", "is_admin", "pending_admin_check", "session_request_count"]:
+            st.session_state.pop(key, None)
+        st.rerun()
+
     st.header("Provider settings")
     provider_name = st.selectbox("Provider", list(PROVIDERS.keys()))
     provider = PROVIDERS[provider_name]
 
-    env_key = os.environ.get(provider["env_var"], "")
-    api_key = st.text_input(
-        f"{provider_name} API key",
-        value=env_key,
-        type="password",
-        help=f"Reads from {provider['env_var']} if set, or paste one here.",
-    )
-    model = st.text_input("Model", value=provider["default_model"])
+    if st.session_state.is_admin:
+        api_key = get_secret(provider["env_var"])
+        if api_key:
+            st.success(f"{provider_name} key loaded from app secrets.")
+        else:
+            st.warning(f"No {provider_name} key found in secrets. Add {provider['env_var']} to Secrets.")
+        model = st.text_input("Model", value=provider["default_model"])
+    else:
+        st.info(f"{provider_name} requires your own API key.")
+        api_key = st.text_input(f"{provider_name} API key", type="password")
+        model = st.text_input("Model", value=provider["default_model"])
+        with st.expander("How do I get an API key?"):
+            st.markdown(f"Get a key from [{provider_name}]({provider['get_key_url']}), then paste it above.")
 
-input_mode = st.radio("Input type", ["Paste text", "Upload file"], horizontal=True)
+    if st.session_state.is_admin:
+        with st.expander("Admin: today's usage"):
+            counter = _usage_counter()
+            with counter["lock"]:
+                today_count = counter["count"] if counter["date"] == date.today() else 0
+            st.metric("Requests today (all users, since last restart)", today_count)
+            st.caption(f"Daily cap for regular users: {MAX_REQUESTS_PER_DAY_GLOBAL}. Resets when the app process restarts.")
+
+content_type = st.selectbox("What are you summarizing?", ["Text", "Image", "PDF", "Word Document"])
 
 text_input = None
 image_bytes = None
 image_mime = None
 
-if input_mode == "Paste text":
+if content_type == "Text":
     text_input = st.text_area("Text to summarize", height=200, placeholder="Paste your text here...")
-else:
-    allowed_types = ["pdf", "docx", "txt"] + (["png", "jpg", "jpeg"] if provider["supports_image"] else [])
-    uploaded = st.file_uploader("Upload a file", type=allowed_types)
-    if uploaded:
-        file_bytes = uploaded.read()
-        ext = uploaded.name.lower().split(".")[-1]
 
-        if ext == "pdf":
-            with st.spinner("Extracting text from PDF..."):
-                text_input = extract_text_from_pdf(file_bytes)
-        elif ext == "docx":
-            with st.spinner("Extracting text from Word document..."):
-                text_input = extract_text_from_docx(file_bytes)
-        elif ext == "txt":
-            text_input = file_bytes.decode("utf-8", errors="ignore")
-        elif ext in ("png", "jpg", "jpeg"):
+elif content_type == "Image":
+    if not provider["supports_image"]:
+        st.warning(f"{provider_name} doesn't support images here. Switch to Claude, ChatGPT, or Gemini for image input.")
+    else:
+        uploaded = st.file_uploader("Upload an image", type=["png", "jpg", "jpeg"])
+        if uploaded:
+            file_bytes = uploaded.read()
+            ext = uploaded.name.lower().split(".")[-1]
             image_mime = "image/png" if ext == "png" else "image/jpeg"
             image_bytes = file_bytes
             st.image(file_bytes, caption=uploaded.name, use_container_width=True)
 
-        if text_input:
-            with st.expander("Preview extracted text"):
-                st.text(text_input[:3000])
+elif content_type == "PDF":
+    uploaded = st.file_uploader("Upload a PDF", type=["pdf"])
+    if uploaded:
+        with st.spinner("Extracting text from PDF..."):
+            text_input = extract_text_from_pdf(uploaded.read())
+        with st.expander("Preview extracted text"):
+            st.text(text_input[:3000])
 
-    if not provider["supports_image"]:
-        st.caption(f"Note: {provider_name} is text-only here — image uploads won't work with this provider.")
+elif content_type == "Word Document":
+    uploaded = st.file_uploader("Upload a Word document", type=["docx"])
+    if uploaded:
+        with st.spinner("Extracting text from Word document..."):
+            text_input = extract_text_from_docx(uploaded.read())
+        with st.expander("Preview extracted text"):
+            st.text(text_input[:3000])
 
 language = st.selectbox("Target language", LANGUAGES, index=1)
 
-used = st.session_state.get("session_request_count", 0)
-st.caption(f"Requests used this session: {used}/{MAX_REQUESTS_PER_SESSION}")
-
-with st.expander("Admin: view today's usage"):
-    admin_password = st.text_input("Admin password", type="password", key="admin_pw")
-    real_password = st.secrets.get("ADMIN_PASSWORD", None) if hasattr(st, "secrets") else None
-    if admin_password:
-        if real_password and admin_password == real_password:
-            counter = _usage_counter()
-            with counter["lock"]:
-                today_count = counter["count"] if counter["date"] == date.today() else 0
-            st.metric("Requests today (all users, since last restart)", today_count)
-            st.caption(f"Daily cap: {MAX_REQUESTS_PER_DAY_GLOBAL}. Resets when the app process restarts.")
-        else:
-            st.error("Incorrect password.")
+if not st.session_state.is_admin:
+    used = st.session_state.get("session_request_count", 0)
+    st.caption(f"Requests used this session: {used}/{MAX_REQUESTS_PER_SESSION}")
 
 if st.button("Summarize", type="primary"):
     if not text_input and not image_bytes:
@@ -242,7 +303,7 @@ if st.button("Summarize", type="primary"):
             text_input = text_input[:MAX_CHARS_PER_REQUEST]
             st.info(f"Text was trimmed to the first {MAX_CHARS_PER_REQUEST} characters to keep requests within budget.")
 
-        limit_error = check_and_record_usage()
+        limit_error = record_usage(st.session_state.is_admin)
         if limit_error:
             st.error(limit_error)
         else:
