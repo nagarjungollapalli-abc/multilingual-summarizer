@@ -7,7 +7,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Multilingual Summarizer", layout="centered")
 
-LANGUAGES = ["English", "Telugu","Kannada", "Hindi", "Tamil", "Kannada", "French", "Spanish", "German"]
+LANGUAGES = ["English", "Telugu", "Hindi", "Tamil", "Kannada", "French", "Spanish", "German"]
 
 # ---------- Usage limits (protects your API budget once this is public) ----------
 # Tune these to whatever you're comfortable with. They only matter when you're
@@ -218,6 +218,19 @@ language = st.selectbox("Target language", LANGUAGES, index=1)
 
 used = st.session_state.get("session_request_count", 0)
 st.caption(f"Requests used this session: {used}/{MAX_REQUESTS_PER_SESSION}")
+
+with st.expander("Admin: view today's usage"):
+    admin_password = st.text_input("Admin password", type="password", key="admin_pw")
+    real_password = st.secrets.get("ADMIN_PASSWORD", None) if hasattr(st, "secrets") else None
+    if admin_password:
+        if real_password and admin_password == real_password:
+            counter = _usage_counter()
+            with counter["lock"]:
+                today_count = counter["count"] if counter["date"] == date.today() else 0
+            st.metric("Requests today (all users, since last restart)", today_count)
+            st.caption(f"Daily cap: {MAX_REQUESTS_PER_DAY_GLOBAL}. Resets when the app process restarts.")
+        else:
+            st.error("Incorrect password.")
 
 if st.button("Summarize", type="primary"):
     if not text_input and not image_bytes:
