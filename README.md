@@ -43,6 +43,8 @@ run it. Environment variable names:
 | ChatGPT | `OPENAI_API_KEY` |
 | Gemini | `GOOGLE_API_KEY` |
 | Sarvam AI | `SARVAM_API_KEY` |
+| Admin login (comma-separated names) | `ADMIN_USERNAMES` |
+| Admin password | `ADMIN_PASSWORD` |
 
 **Windows (PowerShell):**
 ```
@@ -65,13 +67,23 @@ locally on your machine.
 
 ## Notes
 
+- **Home screen:** everyone enters their name first. If the name matches one
+  listed in `ADMIN_USERNAMES` (comma-separated, e.g. `Nagarjun,Priya`), they're
+  prompted for `ADMIN_PASSWORD` to unlock admin mode.
+- **Admin mode:** API keys load automatically from Secrets (no typing needed),
+  and a "today's usage" stat panel appears in the sidebar. Admin requests are
+  not capped by the session/daily limits.
+- **Regular users:** never see the admin's API keys or usage stats. They're
+  shown a link to get their own key for whichever provider they pick, and
+  their requests count against the session and daily limits.
+- **Content type dropdown:** choose Text, Image, PDF, or Word Document —
+  the matching input widget appears. Image input is disabled automatically
+  for Sarvam AI, since it's text-only.
 - Pick a provider from the sidebar dropdown; the model name field is
   editable, so you can swap in a different version any time without
   touching the code.
 - PDFs and Word docs: text is extracted automatically before sending to the
   model.
-- Images: supported for Claude, ChatGPT, and Gemini. Sarvam AI is
-  currently text-only, so image uploads are disabled when it's selected.
 - Each API key only goes to that provider's own servers, directly from your
   machine — nothing is routed through claude.ai or any third party.
 - Each provider bills separately per its own API pricing, independent of
