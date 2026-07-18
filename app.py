@@ -26,7 +26,7 @@ LOGO_SVG = """
 def apply_custom_theme():
     st.markdown(f"""
     <style>
-    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Telugu:wght@600;800&family=Noto+Sans+Devanagari:wght@500;600&display=swap');
 
     :root {{
         --bs-bg: #0B0D14;
@@ -97,17 +97,54 @@ def apply_custom_theme():
 
     .bs-header {{
         display: flex;
-        align-items: center;
-        gap: 14px;
+        align-items: flex-start;
+        gap: 16px;
         margin-bottom: 4px;
     }}
-    .bs-header .bs-title {{
-        font-family: 'Space Grotesk', sans-serif;
-        font-size: 30px;
-        font-weight: 700;
+    .bs-logo {{
+        margin-top: 4px;
+        flex-shrink: 0;
+    }}
+    .bs-title-block {{
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }}
+    .bs-telugu {{
+        font-family: 'Noto Sans Telugu', sans-serif;
+        font-weight: 800;
+        font-size: 40px;
+        line-height: 1.1;
         background: linear-gradient(135deg, var(--bs-text), var(--bs-accent-2));
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+    }}
+    .bs-sub {{
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        color: var(--bs-muted);
+    }}
+    .bs-sub .bs-english {{
+        font-family: 'Space Grotesk', sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+    }}
+    .bs-sub .bs-devanagari {{
+        font-family: 'Noto Sans Devanagari', sans-serif;
+        font-weight: 600;
+        font-size: 15px;
+    }}
+    .bs-sub .bs-sep {{
+        color: var(--bs-border);
+    }}
+    .bs-fixed-tagline {{
+        color: var(--bs-accent-2);
+        font-size: 13px;
+        font-family: 'Inter', sans-serif;
+        font-style: italic;
+        margin-top: 2px;
     }}
     .bs-tagline {{
         color: var(--bs-muted);
@@ -124,10 +161,20 @@ def apply_custom_theme():
     """, unsafe_allow_html=True)
 
 
-def render_brand_header(tagline: str):
+def render_brand_header():
     st.markdown(f"""
-    <div class="bs-header">{LOGO_SVG}<span class="bs-title">Bhasha Setu</span></div>
-    <div class="bs-tagline">{tagline}</div>
+    <div class="bs-header">
+        <div class="bs-logo">{LOGO_SVG}</div>
+        <div class="bs-title-block">
+            <div class="bs-telugu">భాష సేతు</div>
+            <div class="bs-sub">
+                <span class="bs-english">Bhasha Setu</span>
+                <span class="bs-sep">·</span>
+                <span class="bs-devanagari">भाषा सेतु</span>
+            </div>
+            <div class="bs-fixed-tagline">Your personalized translator</div>
+        </div>
+    </div>
     <div class="bs-divider"></div>
     """, unsafe_allow_html=True)
 
@@ -320,7 +367,7 @@ if "username" not in st.session_state:
     st.session_state.pending_admin_check = False
 
 if st.session_state.username is None:
-    render_brand_header("Bridging your text across languages and AI models.")
+    render_brand_header()
     st.caption("Enter your name to continue.")
     name_input = st.text_input("Your name")
     if st.button("Continue", type="primary"):
@@ -334,8 +381,8 @@ if st.session_state.username is None:
     st.stop()
 
 if st.session_state.pending_admin_check:
-    render_brand_header(f"Welcome, {st.session_state.username}")
-    st.caption("This name matches an admin account. Enter the admin password to unlock admin access, or continue as a regular user.")
+    render_brand_header()
+    st.caption(f"Welcome, {st.session_state.username}. This name matches an admin account. Enter the admin password to unlock admin access, or continue as a regular user.")
     pw = st.text_input("Admin password", type="password")
     col1, col2 = st.columns(2)
     with col1:
@@ -359,7 +406,8 @@ if st.session_state.pending_admin_check:
 # MAIN APP
 # ======================================================================
 
-render_brand_header(f"Welcome, {st.session_state.username} — paste text, or upload an image, PDF, or Word document.")
+render_brand_header()
+st.caption(f"Welcome, {st.session_state.username} — paste text, or upload an image, PDF, or Word document.")
 
 with st.sidebar:
     role_label = " (admin)" if st.session_state.is_admin else ""
