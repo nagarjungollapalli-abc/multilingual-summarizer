@@ -1,5 +1,6 @@
 import io
 import os
+import time
 import base64
 import threading
 from datetime import date
@@ -72,6 +73,13 @@ def record_usage(is_admin: bool) -> str | None:
     return None
 
 
+def format_elapsed(seconds: float) -> str:
+    minutes = int(seconds // 60)
+    secs = int(seconds % 60)
+    millis = int((seconds - int(seconds)) * 1000)
+    return f"{minutes} min : {secs} sec : {millis} ms"
+
+
 def get_secret(name: str) -> str:
     try:
         return st.secrets.get(name, "") or os.environ.get(name, "")
@@ -94,16 +102,28 @@ def extract_text_from_docx(file_bytes: bytes) -> str:
 
 
 def build_prompt(language: str, text_input, has_image: bool) -> str:
+    structure_instructions = (
+        f"Structure your response with exactly these 5 sections, each as a "
+        f"bold heading followed by its content, in this order:\n"
+        f"1. Topic — one line naming what this is about\n"
+        f"2. Background — 2-3 sentences of context, what situation or subject this comes from\n"
+        f"3. Summary — a clear paragraph covering the main content\n"
+        f"4. Important points — 3-5 bullet points of the key facts, numbers, or takeaways\n"
+        f"5. Conclusion — 1-2 sentences on the overall implication or outcome\n\n"
+        f"Write the heading words themselves AND all content in {language} "
+        f"(translate the headings 'Topic', 'Background', 'Summary', "
+        f"'Important points', 'Conclusion' into {language} too — do not leave "
+        f"them in English unless {language} is English). "
+        f"Do not add any preamble before section 1 or any text after section 5."
+    )
+
     if has_image:
         return (
-            f"Describe and summarize what's shown or written in this image "
-            f"in exactly 3 concise bullet points, written in {language}. "
-            f"Return only the 3 bullet points, no preamble."
+            f"Look at this image and analyze what's shown or written in it. "
+            f"{structure_instructions}"
         )
     return (
-        f"Summarize the following text in exactly 3 concise bullet points, "
-        f"written in {language} regardless of the original language. "
-        f"Return only the 3 bullet points, no preamble.\n\n"
+        f"Analyze the following text. {structure_instructions}\n\n"
         f'Text:\n"""{text_input}"""'
     )
 
@@ -122,7 +142,7 @@ def call_claude(api_key, model, prompt, image_bytes=None, image_mime=None):
         })
     content.append({"type": "text", "text": prompt})
     response = client.messages.create(
-        model=model, max_tokens=1000,
+        model=model, max_tokens=1500,
         messages=[{"role": "user", "content": content}],
     )
     return "".join(b.text for b in response.content if b.type == "text")
@@ -214,6 +234,7 @@ if st.session_state.pending_admin_check:
 # ======================================================================
 
 st.title("Multilingual summarizer")
+st.header(f"Welcome, {st.session_state.username}")
 st.caption("Paste text, or upload an image, PDF, or Word document. Pick a provider and a language.")
 
 with st.sidebar:
@@ -310,6 +331,8 @@ if st.button("Summarize", type="primary"):
             prompt = build_prompt(language, text_input, has_image=bool(image_bytes))
             with st.spinner(f"Summarizing with {provider_name}..."):
                 try:
+                    start_time = time.perf_counter()
+
                     if provider_name == "Claude (Anthropic)":
                         summary = call_claude(api_key, model, prompt, image_bytes, image_mime)
                     elif provider_name == "ChatGPT (OpenAI)":
@@ -319,7 +342,10 @@ if st.button("Summarize", type="primary"):
                     elif provider_name == "Sarvam AI":
                         summary = call_sarvam(api_key, model, prompt)
 
+                    elapsed = time.perf_counter() - start_time
+
                     st.subheader("Summary")
                     st.write(summary)
+                    st.caption(f"The summary has been extracted in {format_elapsed(elapsed)}")
                 except Exception as e:
                     st.error(f"Something went wrong: {e}")
