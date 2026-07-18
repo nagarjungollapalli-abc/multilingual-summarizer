@@ -7,7 +7,7 @@ import streamlit as st
 
 st.set_page_config(page_title="Multilingual Summarizer", layout="centered")
 
-LANGUAGES = ["English", "Telugu", "Hindi", "Tamil", "Kannada", "French", "Spanish", "German"]
+LANGUAGES = ["English", "Telugu", "Hindi", "Tamil", "Kannada", "Sanskrit", "French", "Spanish", "German"]
 
 # ---------- Usage limits (protects your API budget once this is public) ----------
 # Tune these to whatever you're comfortable with. They only matter when you're
