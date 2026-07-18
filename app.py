@@ -1,11 +1,54 @@
 import io
 import os
 import base64
+import threading
+from datetime import date
 import streamlit as st
 
 st.set_page_config(page_title="Multilingual Summarizer", layout="centered")
 
-LANGUAGES = ["English", "Telugu", "Hindi", "Tamil", "Kannada", "French", "Spanish", "German"]
+LANGUAGES = ["English", "Telugu","Kannada", "Hindi", "Tamil", "Kannada", "French", "Spanish", "German"]
+
+# ---------- Usage limits (protects your API budget once this is public) ----------
+# Tune these to whatever you're comfortable with. They only matter when you're
+# supplying your own key via Secrets on a public deployment. When each visitor
+# pastes their own key, these limits still apply but only cost them, not you.
+MAX_CHARS_PER_REQUEST = 6000        # trims very long pasted/extracted text
+MAX_REQUESTS_PER_SESSION = 5        # per browser tab/session
+MAX_REQUESTS_PER_DAY_GLOBAL = 100   # across every visitor combined, resets at midnight UTC
+
+
+@st.cache_resource
+def _usage_counter():
+    # st.cache_resource makes this ONE shared object for the whole running app
+    # (all visitors), not per-session — that's what makes a global daily cap work.
+    return {"date": date.today(), "count": 0, "lock": threading.Lock()}
+
+
+def check_and_record_usage() -> str | None:
+    """Returns an error message if this request should be blocked; otherwise
+    records the usage and returns None."""
+    if "session_request_count" not in st.session_state:
+        st.session_state.session_request_count = 0
+
+    if st.session_state.session_request_count >= MAX_REQUESTS_PER_SESSION:
+        return (
+            f"You've reached the limit of {MAX_REQUESTS_PER_SESSION} requests "
+            f"for this session. Refresh the page to reset, or run this app "
+            f"with your own key locally for unlimited use."
+        )
+
+    counter = _usage_counter()
+    with counter["lock"]:
+        if counter["date"] != date.today():
+            counter["date"] = date.today()
+            counter["count"] = 0
+        if counter["count"] >= MAX_REQUESTS_PER_DAY_GLOBAL:
+            return "This app has reached its shared daily usage limit. Please try again tomorrow."
+        counter["count"] += 1
+
+    st.session_state.session_request_count += 1
+    return None
 
 PROVIDERS = {
     "Claude (Anthropic)": {
@@ -173,25 +216,36 @@ else:
 
 language = st.selectbox("Target language", LANGUAGES, index=1)
 
+used = st.session_state.get("session_request_count", 0)
+st.caption(f"Requests used this session: {used}/{MAX_REQUESTS_PER_SESSION}")
+
 if st.button("Summarize", type="primary"):
     if not text_input and not image_bytes:
         st.warning("Add some text or upload a file first.")
     elif not api_key:
         st.warning(f"Enter your {provider_name} API key in the sidebar first.")
     else:
-        prompt = build_prompt(language, text_input, has_image=bool(image_bytes))
-        with st.spinner(f"Summarizing with {provider_name}..."):
-            try:
-                if provider_name == "Claude (Anthropic)":
-                    summary = call_claude(api_key, model, prompt, image_bytes, image_mime)
-                elif provider_name == "ChatGPT (OpenAI)":
-                    summary = call_openai(api_key, model, prompt, image_bytes, image_mime)
-                elif provider_name == "Gemini (Google)":
-                    summary = call_gemini(api_key, model, prompt, image_bytes, image_mime)
-                elif provider_name == "Sarvam AI":
-                    summary = call_sarvam(api_key, model, prompt)
+        if text_input and len(text_input) > MAX_CHARS_PER_REQUEST:
+            text_input = text_input[:MAX_CHARS_PER_REQUEST]
+            st.info(f"Text was trimmed to the first {MAX_CHARS_PER_REQUEST} characters to keep requests within budget.")
 
-                st.subheader("Summary")
-                st.write(summary)
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
+        limit_error = check_and_record_usage()
+        if limit_error:
+            st.error(limit_error)
+        else:
+            prompt = build_prompt(language, text_input, has_image=bool(image_bytes))
+            with st.spinner(f"Summarizing with {provider_name}..."):
+                try:
+                    if provider_name == "Claude (Anthropic)":
+                        summary = call_claude(api_key, model, prompt, image_bytes, image_mime)
+                    elif provider_name == "ChatGPT (OpenAI)":
+                        summary = call_openai(api_key, model, prompt, image_bytes, image_mime)
+                    elif provider_name == "Gemini (Google)":
+                        summary = call_gemini(api_key, model, prompt, image_bytes, image_mime)
+                    elif provider_name == "Sarvam AI":
+                        summary = call_sarvam(api_key, model, prompt)
+
+                    st.subheader("Summary")
+                    st.write(summary)
+                except Exception as e:
+                    st.error(f"Something went wrong: {e}")
